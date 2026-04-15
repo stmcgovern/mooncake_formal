@@ -1,0 +1,6 @@
+[submodule "lib/distributed_ml_coq"]
+	path = lib/distributed_ml_coq
+	url = git@github.com:stmcgovern/distributed_ml_coq.git
+[submodule "data_source/Mooncake"]
+	path = data_source/Mooncake
+	url = git@github.com:kvcache-ai/Mooncake.git
