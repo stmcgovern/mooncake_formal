@@ -1,0 +1,30 @@
+# Local Makefile additions (included by coq_makefile-generated Makefile)
+
+.PHONY: quality lint diagnose alignment drift
+
+# Full quality report (all analyses)
+quality:
+	@rocq-quality
+
+# Lint only (fast)
+lint:
+	@rocq-lint
+
+# Gate check (CI)
+diagnose:
+	@rocq-diagnose gate style
+
+# Source alignment coverage report
+alignment:
+	@rocq-alignment
+
+# Detect source structural drift
+drift:
+	@rocq-alignment --check-drift
+
+# Build shared libraries before consumer files
+.PHONY: lib-distributed_ml_coq
+lib-distributed_ml_coq:
+	$(MAKE) -C lib/distributed_ml_coq -j$$(nproc)
+
+pre-all:: lib-distributed_ml_coq

@@ -1,0 +1,68 @@
+Mooncake KV cache disaggregated serving
+
+What we formalize and why:
+
+  <What is the system? What is its core correctness question?>
+  <Why is formal verification the right tool — what class of bugs
+  does it catch that testing misses?>
+  <1-3 sentence summary of what we prove.>
+
+What we model and what we leave out:
+
+  MODEL (high verification value):
+  - <bulleted list of what we formalize>
+
+  LEAVE OUT (low verification value or too coupled to internals):
+  - <bulleted list with brief rationale for each exclusion>
+
+MODELING DECISIONS
+==================
+
+Non-obvious choices that affect multiple files.  Record each decision
+as it's made so that future sessions maintain consistency.
+
+  (none yet — add entries as: "N. <topic>: <choice>. WHY: <reason>")
+
+HEADLINE THEOREMS
+=================
+
+The main results of the formalization, in dependency order.
+Update this as theorems are proved.
+
+  (none yet — add entries as: "N. theorem_name (File.v) — <informal statement>")
+
+KNOWN GAPS
+==========
+
+Paths investigated and abandoned, properties that don't hold,
+assumptions that could be relaxed.  Prevents re-investigation.
+
+  (none yet — add entries as: "- <description>. STATUS: abandoned|deferred|relaxable. REASON: <why>")
+
+Layer structure:
+  theories/Core/     — Core types and typeclasses
+  (add directories as the project grows)
+
+Shared libraries:
+  lib/  — distributed_ml_coq (git submodule, build with make -C lib/<name>)
+
+Source alignment:
+  Source: data_source/Mooncake
+  Config: .source-alignment.yml
+  Run `rocq-alignment` for coverage report
+  Run `rocq-alignment --check-drift` before pulling source updates
+
+Quality gates (rocq-quality):
+  - All proofs complete (no Admitted)
+  - Layer discipline (lower layers don't import higher)
+  - rocq-diagnose gate style --strict
+
+FORMALIZATION MAP
+=================
+
+Source module -> Coq module -> What and why.
+Add entries during Phase 1 (survey) of the formalize workflow.
+Include FIDELITY (structural-correspondence or behavioral-model)
+and KEY RESULTS (theorem names) for each entry.
+
+  (none yet — add entries during formalization)

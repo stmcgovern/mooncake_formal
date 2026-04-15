@@ -1,0 +1,4 @@
+-R lib/distributed_ml_coq/theories DistributedML
+-R theories MooncakeFormal
+
+theories/Core/Core.v
