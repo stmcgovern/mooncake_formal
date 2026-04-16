@@ -2,3 +2,5 @@
 -R theories MooncakeFormal
 
 theories/Core/Core.v
+theories/Store/SegmentManager.v
+theories/Transfer/TransferProtocol.v
