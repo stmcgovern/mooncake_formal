@@ -3,4 +3,7 @@
 
 theories/Core/Core.v
 theories/Store/SegmentManager.v
+theories/Store/DrainProtocol.v
 theories/Transfer/TransferProtocol.v
+theories/Transfer/ReplicaTransfer.v
+theories/Composition/StoreComposition.v

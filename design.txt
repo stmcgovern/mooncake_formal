@@ -2,19 +2,29 @@ Mooncake KV cache disaggregated serving
 
 What we formalize and why:
 
-  Mooncake disaggregates KV cache from the inference engine: prefill
-  nodes produce KV blocks stored in a distributed pool, decode nodes
-  fetch them on demand.  The core correctness question is whether the
-  replica lifecycle, segment health, eviction, and transfer protocols
-  compose safely — no reads from incomplete replicas, no eviction of
-  pinned or in-flight data, no allocation on draining segments, no
-  transfer outliving its replica.  Formal verification catches state
-  machine composition bugs (e.g. draining a segment with in-progress
-  writes) that unit tests miss because they don't explore all interleavings.
+  Mooncake disaggregates KV cache from GPU compute in LLM serving.
+  Prefill nodes produce KV blocks; these are stored in a distributed
+  pool (DRAM, SSD, CXL); decode nodes fetch them on demand via RDMA.
+  The core insight: trade cheap storage for expensive GPU recomputation.
 
-  We prove: (1) replica lifecycle monotonicity and readability gates,
-  (2) segment drain/unmount safety, (3) eviction protection coherence,
-  (4) transfer slice monotonicity and completion coherence.
+  Strip away the transport layer and the scheduler — what remains is a
+  distributed object store with a lifecycle protocol.  The objects are
+  KV cache blocks.  The lifecycle is: produce → transfer → store →
+  serve → evict.  The store manages two interlocking state machines:
+  replica status (per-object) and segment status (per-container).
+
+  The core correctness question: do the protocol gates compose safely?
+  Each gate is trivial alone — readable iff COMPLETE, allocatable iff
+  SegOk, protected iff pinned or referenced.  But their COMPOSITION
+  has subtle interleavings that testing can't enumerate: can you drain
+  a segment while a transfer is writing to a replica on it?  Can you
+  evict an object that another transfer is about to read?
+
+  We prove: (1) each state machine has no self-transitions and terminal
+  states are absorbing, (2) eviction protection is coherent (pinned OR
+  referenced OR in-progress → protected), (3) segment operations respect
+  status gates, (4) transfer slice counting is monotonic, (5) the
+  protocol gates compose into a single global invariant.
 
 What we model and what we leave out:
 
@@ -87,20 +97,46 @@ Non-obvious choices that affect multiple files.
 HEADLINE THEOREMS
 =================
 
-  1. replica_no_self_transition (Core.v) — no replica status is its own successor
-  2. segment_no_self_transition (Core.v) — no segment status is its own successor
-  3. no_transition_from_removed (Core.v) — REMOVED is terminal for replicas
-  4. no_transition_from_unmounting (Core.v) — UNMOUNTING is terminal for segments
-  5. processing_not_evictable (Core.v) — in-progress writes are always protected
-  6. hard_pinned_protected (Core.v) — hard-pinned objects are always protected
-  7. active_readers_protected (Core.v) — objects with ref_count > 0 are protected
-  8. readable_is_complete (Core.v) — readability implies COMPLETE status
-  9. place_requires_ok (SegmentManager.v) — placement requires SegOk segment
-  10. empty_drained_safe (SegmentManager.v) — empty + drained = safe to unmount
-  11. create_task_slice_inv (TransferProtocol.v) — new tasks satisfy slice invariant
-  12. complete_slice_preserves_inv (TransferProtocol.v) — slice completion is monotonic
-  13. transfer_no_self_transition (TransferProtocol.v) — no transfer status loops
-  14. task_finished_iff (TransferProtocol.v) — task_finished reflects terminal status
+  Layer 1 — State machines (Core.v):
+  1. replica_no_self_transition — no replica status is its own successor
+  2. segment_no_self_transition — no segment status is its own successor
+  3. no_transition_from_removed — REMOVED is terminal for replicas
+  4. no_transition_from_unmounting — UNMOUNTING is terminal for segments
+  5. processing_not_evictable — in-progress writes are always protected
+  6. hard_pinned_protected — hard-pinned objects are always protected
+  7. active_readers_protected — objects with ref_count > 0 are protected
+  8. readable_is_complete — readability implies COMPLETE status
+
+  Layer 2 — Segment operations (SegmentManager.v):
+  9. place_requires_ok — placement requires SegOk segment
+  10. empty_drained_safe — empty + drained = safe to unmount
+
+  Layer 2 — Transfer protocol (TransferProtocol.v):
+  11. create_task_slice_inv — new tasks satisfy slice invariant
+  12. complete_slice_preserves_inv — slice completion is monotonic
+  13. transfer_no_self_transition — no transfer status loops
+  14. task_finished_iff — task_finished reflects terminal status
+
+  Layer 3 — Drain protocol (DrainProtocol.v):
+  15. drain_sequence_valid — Ok→Draining→Drained→Unmounting is valid
+  16. drain_sequence_blocks_placement — no placement at any drain stage
+  17. drain_then_unmount_safe — empty segment: drain + complete = safe to unmount
+  18. drainable_no_processing — drainable segments have no in-progress transfers
+
+  Layer 3 — Transfer-replica bridge (ReplicaTransfer.v):
+  19. transfer_success_valid_transition — task succeeded → PROCESSING→COMPLETE valid
+  20. transfer_failure_valid_transition — task failed → PROCESSING→FAILED valid
+  21. removed_not_coupled_active — REMOVED replicas can't have active transfers
+
+  Layer 4 — Composition (StoreComposition.v):
+  22. four_gates_hold — all four protocol gates hold simultaneously on consistent store
+  23. evictable_characterization — evictable ↔ complete ∧ not hard-pinned ∧ no readers
+  24. processing_only_on_ok — PROCESSING objects exist only on SegOk segments
+  25. place_preserves_consistency — placing an object preserves store consistency
+  26. remove_preserves_consistency — removing an object preserves store consistency
+  27. begin_drain_preserves_consistency — starting drain preserves store consistency
+  28. no_incomplete_reads — no reads from non-COMPLETE replicas
+  29. no_unmount_with_objects — unmount requires empty segment
 
 KNOWN GAPS
 ==========
@@ -139,9 +175,10 @@ KNOWN GAPS
     (distribution vs lifecycle), would need its own formalization.
 
 Layer structure:
-  theories/Core/       — Foundation types and state machines
-  theories/Store/      — Segment management and capacity bookkeeping
-  theories/Transfer/   — Transfer protocol and slice invariants
+  theories/Core/          — Foundation types and state machines (Layer 1)
+  theories/Store/         — Segment management and drain protocol (Layer 2-3)
+  theories/Transfer/      — Transfer protocol and replica bridge (Layer 2-3)
+  theories/Composition/   — Cross-module safety composition (Layer 4)
 
 Shared libraries:
   lib/  — distributed_ml_coq (git submodule, build with make -C lib/<name>)
@@ -203,25 +240,63 @@ Source module -> Coq module -> What and why.
     KEY RESULTS: create_task_slice_inv, complete_slice_preserves_inv,
     transfer_no_self_transition, task_finished_iff
 
+  mooncake-store (segment.h drain logic, PrepareUnmount, CommitUnmount)
+    → Store/DrainProtocol.v
+    FIDELITY: specification
+    WHAT: Two-phase drain/unmount protocol.  DRAINING blocks allocation,
+    objects must be explicitly removed, DRAINED + empty = safe to unmount.
+    WHY: Premature unmounting loses data.  The drain protocol is the
+    primary defense; it must be proven correct as a sequence.
+    KEY RESULTS: drain_sequence_valid, drain_sequence_blocks_placement,
+    drain_then_unmount_safe, drainable_no_processing
+
+  mooncake-store (replica.h mark_complete, transfer_task.h callback)
+    → Transfer/ReplicaTransfer.v
+    FIDELITY: specification
+    WHAT: Bridge between transfer completion and replica status.
+    task_succeeded → PROCESSING → COMPLETE.  task_failed → PROCESSING →
+    FAILED.  REMOVED replicas cannot have active transfers.
+    WHY: This is the critical coupling between transfer and replica
+    state machines.  An orphaned transfer or premature promotion is
+    a data integrity bug.
+    KEY RESULTS: transfer_success_valid_transition,
+    transfer_failure_valid_transition, removed_not_coupled_active
+
+  composition of replica.h × segment.h × transfer_task.h
+    → Composition/StoreComposition.v
+    FIDELITY: specification
+    WHAT: Composed global invariant (store_consistent) over segment +
+    transfers.  Four protocol gates hold simultaneously.  Placement,
+    removal, and drain operations preserve consistency.
+    WHY: The capstone — this is what the formalization exists to prove.
+    Individual state machines are trivial; their composition is where
+    bugs hide.
+    KEY RESULTS: four_gates_hold, evictable_characterization,
+    processing_only_on_ok, place_preserves_consistency,
+    remove_preserves_consistency, begin_drain_preserves_consistency,
+    no_incomplete_reads, no_unmount_with_objects
+
 NEXT STEPS
 ==========
 
-  Possible extensions, roughly in priority order:
+  Items 1-3 from the original plan are DONE (StoreComposition,
+  ReplicaTransfer, DrainProtocol).  Remaining extensions:
 
-  1. EvictionSafety.v — Compose eviction_protected with segment operations.
-     Theorem: eviction of a protected object requires explicit unpin first.
-     Source: eviction_strategy.h, store.cpp eviction loop.
+  1. EvictionSafety.v — Formalize the eviction precondition.
+     Theorem: eviction of a protected object requires explicit unpin
+     AND ref_count = 0 AND status = COMPLETE.
+     Theorem: eviction removes exactly one object and decreases used space.
+     Theorem: eviction on a draining segment does not create new replicas.
+     Source: eviction_strategy.h EvictKey, store.cpp eviction loop.
 
-  2. ReplicaTransfer.v — Link transfer completion to replica status
-     transitions.  Theorem: task_succeeded → replica can transition
-     PROCESSING → COMPLETE.  Source: store.cpp callback on transfer done.
-
-  3. DrainProtocol.v — Formalize the full drain sequence: mark DRAINING,
-     migrate all replicas, verify empty, transition to DRAINED, unmount.
-     Theorem: drain preserves no-data-loss (all replicas migrated before
-     unmount).  Source: segment.h drain logic.
-
-  4. CapacityCoherence.v — Prove that segment used-space tracking is
-     coherent: place increases by om_size, remove decreases by om_size,
-     used never exceeds capacity if has_room checked.
+  2. CapacityCoherence.v — Prove segment capacity bookkeeping is coherent.
+     Theorem: place increases used by om_size, remove decreases by om_size.
+     Theorem: if has_room checked before place, then used ≤ capacity after.
+     Theorem: used = sum of om_size over all live objects on the segment.
      Source: allocator.h, store.cpp allocation path.
+
+  3. RefcountProtocol.v — Formalize reference counting as a protocol.
+     Theorem: inc_refcnt/dec_refcnt are paired (every inc has a matching dec).
+     Theorem: refcnt > 0 → eviction_protected.
+     Theorem: refcnt = 0 is a precondition for replica removal.
+     Source: replica.h inc_refcnt/dec_refcnt/is_busy.
