@@ -193,6 +193,14 @@ HEADLINE THEOREMS
   47. drain_invariant — draining status and consistency preserved through removal traces
   48. drain_bounded — drain phase bounded by initial object count; emptiness enables completion
 
+  Layer 4 — Lifecycle convergence (Convergence.v):
+  49. filter_comm — filter operations commute (order-independence of removals)
+  50. remove_objects_comm — removal order doesn't affect resulting objects list
+  51. sequential_remove_lstar — removing all objects one by one empties the segment
+  52. lifecycle_convergence — HEADLINE: segment reaches SegUnmounting in exactly n+3 steps
+  53. lifecycle_trace_length — tight bound: trace length = object_count + 3
+  54. segment_reclaimable — every segment with unique IDs is reclaimable
+
 KNOWN GAPS
 ==========
 
@@ -407,6 +415,20 @@ Source module -> Coq module -> What and why.
     KEY RESULTS: drain_never_adds_objects, remove_present_decreases,
     drain_completion_enabled, drain_trace_monotone, drain_invariant,
     drain_bounded
+
+  mooncake-store/include/segment.h (full lifecycle)
+    → LTS/Convergence.v
+    FIDELITY: specification
+    WHAT: Tight quantitative lifecycle bound.  Constructs the explicit
+    optimal trace [BeginDrain, Remove₁…Removeₙ, CompleteDrain, Unmount]
+    and proves it reaches SegUnmounting in exactly n+3 steps.  Also
+    proves removal commutativity (order doesn't matter).
+    WHY: Quantitative result — not just "the system converges" but
+    "it converges in exactly this many steps via this specific trace."
+    The commutativity result reveals inherent parallelism in the drain
+    phase: all n removals are independent and could execute concurrently.
+    KEY RESULTS: filter_comm, remove_objects_comm, sequential_remove_lstar,
+    lifecycle_convergence, lifecycle_trace_length, segment_reclaimable
 
 NEXT STEPS
 ==========

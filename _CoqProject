@@ -11,3 +11,4 @@ theories/LTS/StoreLTS.v
 theories/LTS/Acyclicity.v
 theories/LTS/StoreRefinement.v
 theories/LTS/DrainProgress.v
+theories/LTS/Convergence.v
