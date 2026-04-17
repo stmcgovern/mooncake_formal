@@ -113,6 +113,25 @@ Non-obvious choices that affect multiple files.
      decomposition with explicit per-component indices.  The Lyapunov
      argument is self-contained and sufficient for drain termination.
 
+  10. Enriched LTS as a separate relation: The read/evict operations
+     are defined in a separate rich_store_step relation rather than
+     extending store_step.  This avoids breaking all existing proofs
+     (which would need more cases) while still enabling the safety
+     theorems.
+     WHY: Extending store_step with 3 new constructors would require
+     updating every proof that does case analysis on store_step
+     (store_step_preserves_consistency, drain_never_adds_objects, etc.).
+     The enriched LTS duplicates the 5 original constructors but keeps
+     existing theorems intact.
+
+  11. Evict vs Remove: The existing LRemove is unconditional (used during
+     drain cleanup).  RLEvict adds preconditions (eviction_protected =
+     false).  In the real system, eviction and drain-cleanup are distinct
+     code paths with different safety checks.
+     WHY: The distinction captures the real protocol: eviction is guarded
+     by refcount/pin/status checks, while drain-time removal is forced
+     (the segment is being reclaimed regardless).
+
   9. drain_wf (well-foundedness of drain_step) is not provable: The
      drain_step relation wraps LRemove, but remove_object is always
      enabled (it's a filter that may be a no-op).  A no-op removal
@@ -200,6 +219,21 @@ HEADLINE THEOREMS
   52. lifecycle_convergence — HEADLINE: segment reaches SegUnmounting in exactly n+3 steps
   53. lifecycle_trace_length — tight bound: trace length = object_count + 3
   54. segment_reclaimable — every segment with unique IDs is reclaimable
+
+  Layer 2-3 — Refcount protocol (RefcountProtocol.v):
+  55. inc_protects — incrementing refcount makes object eviction-protected
+  56. evictable_zero_refcnt — evictable implies refcount = 0
+  57. evictable_is_complete — evictable implies status = COMPLETE
+  58. inc_segment_refcnt_protects — inc on segment produces protected object
+  59. find_after_update — object lookup after update_object_meta gives f(original)
+  60. update_preserves_live — refcount changes preserve object liveness
+
+  Layer 4 — Eviction safety (EvictionSafety.v):
+  61. read_eviction_safety — HEADLINE: refcnt > 0 prevents eviction
+  62. begin_read_blocks_eviction — HEADLINE: BeginRead makes Evict impossible
+  63. evict_is_guarded_remove — Evict is a precondition-checked Remove
+  64. triple_protection — pin, refcount, or non-readable each independently protect
+  65. eviction_requires_all_absent — eviction requires all three protections absent
 
 KNOWN GAPS
 ==========
@@ -429,6 +463,32 @@ Source module -> Coq module -> What and why.
     phase: all n removals are independent and could execute concurrently.
     KEY RESULTS: filter_comm, remove_objects_comm, sequential_remove_lstar,
     lifecycle_convergence, lifecycle_trace_length, segment_reclaimable
+
+  mooncake-store/include/replica.h (inc_refcnt, dec_refcnt, fn_is_busy)
+    → Store/RefcountProtocol.v
+    FIDELITY: specification
+    WHAT: Reference counting operations on objects and segments.  Object
+    lookup by ID, in-place metadata update, refcount increment/decrement.
+    Connection between refcount and eviction protection predicate.
+    WHY: The refcount mechanism is the primary safety mechanism in
+    Mooncake — it prevents eviction of objects being read via RDMA.
+    Formalizing the operations and their properties is prerequisite for
+    the eviction safety theorem.
+    KEY RESULTS: inc_protects, evictable_zero_refcnt, evictable_is_complete,
+    inc_segment_refcnt_protects, find_after_update, update_preserves_live
+
+  mooncake-store/include/replica.h + src/master_service.cpp
+    → LTS/EvictionSafety.v
+    FIDELITY: specification
+    WHAT: Enriched LTS with 8 operations (original 5 + BeginRead, EndRead,
+    Evict).  BeginRead increments refcount on COMPLETE objects.  EndRead
+    decrements.  Evict requires eviction_protected = false.  Key safety
+    theorem: a read in progress (refcnt > 0) makes eviction impossible.
+    WHY: This is the essence of Mooncake's safety.  The refcount protocol
+    creates a separation between "active read" and "eligible for eviction"
+    that cannot be violated by any interleaving of operations.
+    KEY RESULTS: read_eviction_safety, begin_read_blocks_eviction,
+    evict_is_guarded_remove, triple_protection, eviction_requires_all_absent
 
 NEXT STEPS
 ==========

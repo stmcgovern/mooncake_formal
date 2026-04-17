@@ -10,5 +10,7 @@ theories/Composition/StoreComposition.v
 theories/LTS/StoreLTS.v
 theories/LTS/Acyclicity.v
 theories/LTS/StoreRefinement.v
+theories/Store/RefcountProtocol.v
 theories/LTS/DrainProgress.v
 theories/LTS/Convergence.v
+theories/LTS/EvictionSafety.v
