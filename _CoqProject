@@ -7,3 +7,7 @@ theories/Store/DrainProtocol.v
 theories/Transfer/TransferProtocol.v
 theories/Transfer/ReplicaTransfer.v
 theories/Composition/StoreComposition.v
+theories/LTS/StoreLTS.v
+theories/LTS/Acyclicity.v
+theories/LTS/StoreRefinement.v
+theories/LTS/DrainProgress.v

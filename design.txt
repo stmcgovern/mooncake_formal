@@ -94,6 +94,34 @@ Non-obvious choices that affect multiple files.
      "the lock is held correctly".  The latter is a concurrency concern
      we don't model.
 
+  7. LTS labels are 5 operations, not 9: The initial plan called for 9
+     labels (including transfer operations).  We use 5: LPlace, LRemove,
+     LBeginDrain, LCompleteDrain, LUnmount.  Transfer operations are
+     excluded from the LTS because the store_step relation operates on
+     StoreState (segment + transfers), and transfer status changes don't
+     interact with segment operations in the current model.
+     WHY: Keeping the LTS minimal simplifies case analysis in every
+     theorem.  Transfer properties are proved separately in
+     TransferProtocol.v.
+
+  8. Drain liveness uses object_count as Lyapunov function, not
+     composed_progress_sound: The plan called for instantiating DML's
+     composed progress framework.  Instead, we use a simpler argument:
+     object_count is bounded below by 0 and never increases on draining
+     segments, so the drain phase terminates in at most object_count steps.
+     WHY: The composed progress framework requires an active/frame
+     decomposition with explicit per-component indices.  The Lyapunov
+     argument is self-contained and sufficient for drain termination.
+
+  9. drain_wf (well-foundedness of drain_step) is not provable: The
+     drain_step relation wraps LRemove, but remove_object is always
+     enabled (it's a filter that may be a no-op).  A no-op removal
+     doesn't decrease any measure, so rank_wf cannot be instantiated.
+     WHY: Well-foundedness requires every step to make progress, but
+     removal of a non-existent object is a valid step that does nothing.
+     The bounded theorem (drain_bounded) captures the useful property
+     without requiring well-foundedness.
+
 HEADLINE THEOREMS
 =================
 
@@ -117,26 +145,53 @@ HEADLINE THEOREMS
   13. transfer_no_self_transition — no transfer status loops
   14. task_finished_iff — task_finished reflects terminal status
 
+  Layer 2 — Unified LTS (StoreLTS.v):
+  15. store_step_preserves_consistency — every store_step preserves store_consistent
+  16. store_consistent_star — store_consistent through arbitrary step sequences (via DML lstar)
+
+  Layer 2-3 — Acyclicity and well-foundedness (Acyclicity.v):
+  17. replica_acyclic — no replica status reaches itself through any path (subsumes #1)
+  18. segment_acyclic — no segment status reaches itself through any path (subsumes #2)
+  19. transfer_acyclic — no transfer status reaches itself through any path
+  20. replica_wf, segment_wf, transfer_wf — all component transitions are well-founded
+  21. progress_step_rank_nonincreasing — progress steps never increase composed rank
+  22. drain_step_decreases_rank — drain operations strictly decrease composed rank
+
   Layer 3 — Drain protocol (DrainProtocol.v):
-  15. drain_sequence_valid — Ok→Draining→Drained→Unmounting is valid
-  16. drain_sequence_blocks_placement — no placement at any drain stage
-  17. drain_then_unmount_safe — empty segment: drain + complete = safe to unmount
-  18. drainable_no_processing — drainable segments have no in-progress transfers
+  23. drain_sequence_valid — Ok→Draining→Drained→Unmounting is valid
+  24. drain_sequence_blocks_placement — no placement at any drain stage
+  25. drain_then_unmount_safe — empty segment: drain + complete = safe to unmount
+  26. drainable_no_processing — drainable segments have no in-progress transfers
 
   Layer 3 — Transfer-replica bridge (ReplicaTransfer.v):
-  19. transfer_success_valid_transition — task succeeded → PROCESSING→COMPLETE valid
-  20. transfer_failure_valid_transition — task failed → PROCESSING→FAILED valid
-  21. removed_not_coupled_active — REMOVED replicas can't have active transfers
+  27. transfer_success_valid_transition — task succeeded → PROCESSING→COMPLETE valid
+  28. transfer_failure_valid_transition — task failed → PROCESSING→FAILED valid
+  29. removed_not_coupled_active — REMOVED replicas can't have active transfers
+
+  Layer 3 — Refinement morphisms (StoreRefinement.v):
+  30. segment_invariant_lift — component invariants lift to composed store (via DML Refinement)
+  31. segment_trace_projection — store traces project to valid segment traces
+  32. once_draining_never_ok — draining segment never returns to SegOk
+  33. once_draining_no_placement — once draining, placement is always blocked
+  34. segment_rank_monotone — segment rank never increases through store traces
 
   Layer 4 — Composition (StoreComposition.v):
-  22. four_gates_hold — all four protocol gates hold simultaneously on consistent store
-  23. evictable_characterization — evictable ↔ complete ∧ not hard-pinned ∧ no readers
-  24. processing_only_on_ok — PROCESSING objects exist only on SegOk segments
-  25. place_preserves_consistency — placing an object preserves store consistency
-  26. remove_preserves_consistency — removing an object preserves store consistency
-  27. begin_drain_preserves_consistency — starting drain preserves store consistency
-  28. no_incomplete_reads — no reads from non-COMPLETE replicas
-  29. no_unmount_with_objects — unmount requires empty segment
+  35. four_gates_hold — all four protocol gates hold simultaneously on consistent store
+  36. evictable_characterization — evictable ↔ complete ∧ not hard-pinned ∧ no readers
+  37. processing_only_on_ok — PROCESSING objects exist only on SegOk segments
+  38. place_preserves_consistency — placing an object preserves store consistency
+  39. remove_preserves_consistency — removing an object preserves store consistency
+  40. begin_drain_preserves_consistency — starting drain preserves store consistency
+  41. no_incomplete_reads — no reads from non-COMPLETE replicas
+  42. no_unmount_with_objects — unmount requires empty segment
+
+  Layer 4 — Drain liveness (DrainProgress.v):
+  43. drain_never_adds_objects — object count never increases on non-allocatable segments
+  44. remove_present_decreases — removing a present object strictly decreases count
+  45. drain_completion_enabled — empty draining segment enables CompleteDrain
+  46. drain_trace_monotone — object count never increases through removal traces
+  47. drain_invariant — draining status and consistency preserved through removal traces
+  48. drain_bounded — drain phase bounded by initial object count; emptiness enables completion
 
 KNOWN GAPS
 ==========
@@ -174,11 +229,36 @@ KNOWN GAPS
     STATUS: deferred.  REASON: separate language (Go), separate concern
     (distribution vs lifecycle), would need its own formalization.
 
+  - drain_wf (well-foundedness of drain_step relation): drain_step wraps
+    LRemove, but remove_object is always enabled as a no-op filter.
+    Removing a non-existent object doesn't decrease any measure.
+    STATUS: abandoned.  REASON: rank_wf requires strict decrease on every
+    step.  The useful property (drain terminates after bounded removals)
+    is captured by drain_bounded without needing well-foundedness.
+
+  - Transfer operations in the LTS: the plan called for 9 store labels
+    including LBeginTransfer, LCompleteSlice, LFinishTransfer,
+    LPromoteReplica.  Only 5 labels were implemented.
+    STATUS: deferred.  REASON: transfer status changes don't interact
+    with segment operations in the current model.  Adding them would
+    increase case analysis in every theorem without enabling new
+    cross-cutting results.  Can be added when transfer-segment coupling
+    properties are needed.
+
+  - Replica refinement morphism: StoreRefinement.v was planned to include
+    both segment and replica projections.  Only segment refinement was
+    implemented.
+    STATUS: deferred.  REASON: replica projection requires a find-by-id
+    function and handling of absent objects (project to RsRemoved).
+    Segment refinement was higher priority since it enables drain
+    monotonicity.  Can be added when per-object trace reasoning is needed.
+
 Layer structure:
   theories/Core/          — Foundation types and state machines (Layer 1)
   theories/Store/         — Segment management and drain protocol (Layer 2-3)
   theories/Transfer/      — Transfer protocol and replica bridge (Layer 2-3)
   theories/Composition/   — Cross-module safety composition (Layer 4)
+  theories/LTS/           — Labeled transition system, acyclicity, refinement, liveness (Layer 2-4)
 
 Shared libraries:
   lib/  — distributed_ml_coq (git submodule, build with make -C lib/<name>)
@@ -275,6 +355,58 @@ Source module -> Coq module -> What and why.
     processing_only_on_ok, place_preserves_consistency,
     remove_preserves_consistency, begin_drain_preserves_consistency,
     no_incomplete_reads, no_unmount_with_objects
+
+  composition of replica.h × segment.h × transfer_task.h
+    → LTS/StoreLTS.v
+    FIDELITY: specification
+    WHAT: Unified labeled transition system.  5 labels (LPlace, LRemove,
+    LBeginDrain, LCompleteDrain, LUnmount).  store_step wraps existing
+    operations with precondition guards.  Multi-step preservation via DML
+    lstar_preserved.
+    WHY: Enables multi-step reasoning about arbitrary execution traces.
+    Single-step preservation is necessary but not sufficient for safety
+    under interleaving.
+    KEY RESULTS: store_step_preserves_consistency, store_consistent_star,
+    store_step_segment_status
+
+  composition of replica.h × segment.h × transfer_task.h
+    → LTS/Acyclicity.v
+    FIDELITY: specification
+    WHAT: Rank functions for all three component state machines.  Global
+    acyclicity via DML rank_acyclic.  Well-foundedness via DML rank_wf.
+    Composed store_rank with progress step analysis.
+    WHY: Acyclicity subsumes the single-step no-self-transition lemmas
+    (proves the stronger property: no state reaches itself via any path
+    length).  Well-foundedness guarantees convergence without external input.
+    KEY RESULTS: replica_acyclic, segment_acyclic, transfer_acyclic,
+    replica_wf, segment_wf, transfer_wf, progress_step_rank_nonincreasing,
+    drain_step_decreases_rank
+
+  composition of replica.h × segment.h
+    → LTS/StoreRefinement.v
+    FIDELITY: specification
+    WHAT: Refinement morphism projecting store state to segment component.
+    Invariant lifting and trace projection via DML Refinement module.
+    Segment monotonicity: status never regresses.
+    WHY: Enables reasoning about component-level properties from composed
+    traces.  Monotonicity proves that drain is irreversible: once draining
+    begins, the segment can never accept new objects.
+    KEY RESULTS: segment_invariant_lift, segment_trace_projection,
+    once_draining_never_ok, once_draining_no_placement,
+    segment_rank_monotone
+
+  mooncake-store/include/segment.h (drain lifecycle)
+    → LTS/DrainProgress.v
+    FIDELITY: specification
+    WHAT: Drain termination as a liveness property.  Object count is a
+    Lyapunov function: bounded below by 0, never increases on draining
+    segments, strictly decreases on removal of present objects.
+    WHY: First liveness property in the formalization.  Safety says "bad
+    things don't happen"; liveness says "good things eventually happen".
+    Drain termination means a segment can eventually be reclaimed.
+    KEY RESULTS: drain_never_adds_objects, remove_present_decreases,
+    drain_completion_enabled, drain_trace_monotone, drain_invariant,
+    drain_bounded
 
 NEXT STEPS
 ==========
