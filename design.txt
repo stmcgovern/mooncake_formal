@@ -124,6 +124,14 @@ Non-obvious choices that affect multiple files.
      The enriched LTS duplicates the 5 original constructors but keeps
      existing theorems intact.
 
+  12. Frame properties via label_targets classification: rather than proving
+     per-step frame lemmas individually (one per constructor), we define
+     label_targets : RichStoreLabel → ObjectId → bool and prove one general
+     theorem (non_targeting_preserves_find) that covers all 8 constructors.
+     WHY: Reduces 8 per-step lemmas to 1 master theorem.  New constructors
+     added to the enriched LTS only need one new case in the master proof.
+     The specific concurrent safety theorems are corollaries.
+
   11. Evict vs Remove: The existing LRemove is unconditional (used during
      drain cleanup).  RLEvict adds preconditions (eviction_protected =
      false).  In the real system, eviction and drain-cleanup are distinct
@@ -234,6 +242,77 @@ HEADLINE THEOREMS
   63. evict_is_guarded_remove — Evict is a precondition-checked Remove
   64. triple_protection — pin, refcount, or non-readable each independently protect
   65. eviction_requires_all_absent — eviction requires all three protections absent
+
+  Layer 3-4 — Protection frame properties (ProtectionFrame.v):
+  66. find_in_filter_neq — object lookup after filtering a different ID is preserved
+  67. find_after_update_neq — object lookup after updating a different ID is preserved
+  68. non_targeting_preserves_find — GENERAL: any step not targeting an object preserves it
+  69. concurrent_eviction_safe — HEADLINE: evicting B doesn't affect A's read protection
+  70. concurrent_reads_independent — HEADLINE: reading B doesn't interfere with A's protection
+  71. drain_preserves_read_protection — HEADLINE: removing B during drain preserves A's read protection
+  72. end_read_preserves_other_protection — ending a read on B preserves A's protection
+  73. trace_non_targeting_preserves_find — multi-step frame: find preserved through traces
+  74. trace_read_protection — HEADLINE: active readers protected through arbitrary traces
+
+  Layer 3-4 — Object lifecycle completeness (ObjectLifecycle.v):
+  75. find_in_filter_self — filtering by ID removes all matches
+  76. remove_makes_unfindable — remove_object makes target unfindable
+  77. eviction_makes_unfindable — Evict step removes the object
+  78. place_makes_findable — Place step makes new object findable
+  79. eviction_possible — unprotected + findable → eviction step exists
+  80. read_possible — COMPLETE + findable → BeginRead step exists
+  81. read_or_evict — HEADLINE: protection dichotomy (protected xor evictable)
+  82. active_readers_block_eviction — active readers → protected ∧ unevictable
+  83. begin_read_protects — BeginRead changes protection and increments refcount
+  84. evict_and_remove_same_effect — eviction and removal have same state effect
+
+  -- Diamond property (independent operations commute) --
+  85. filter_map_comm_neq — filter and map on different IDs commute (list level)
+  86. map_map_comm_neq — maps on different IDs commute (list level)
+  87. freed_filter_independent — freed-space unaffected by filtering other ID
+  88. freed_map_independent — freed-space unaffected by mapping other ID
+  89. remove_update_seg_comm — remove and update commute at segment level
+  90. update_update_seg_comm — updates on different IDs commute at segment level
+  91. remove_remove_seg_comm — removes on different IDs commute (full equality)
+  92. concurrent_reads_diamond — HEADLINE: BeginRead(A);BeginRead(B) = BeginRead(B);BeginRead(A)
+  93. evict_read_diamond — HEADLINE: Evict(A);BeginRead(B) = BeginRead(B);Evict(A)
+  94. remove_remove_diamond — HEADLINE: Remove(A);Remove(B) = Remove(B);Remove(A)
+  95. evict_evict_diamond — HEADLINE: Evict(A);Evict(B) = Evict(B);Evict(A)
+  96. remove_read_diamond — HEADLINE: Remove(A);BeginRead(B) = BeginRead(B);Remove(A)
+  97. end_read_end_read_diamond — HEADLINE: EndRead(A);EndRead(B) = EndRead(B);EndRead(A)
+  98. begin_read_end_read_diamond — HEADLINE: BeginRead(A);EndRead(B) = EndRead(B);BeginRead(A)
+  99. evict_end_read_diamond — HEADLINE: Evict(A);EndRead(B) = EndRead(B);Evict(A)
+  100. remove_end_read_diamond — HEADLINE: Remove(A);EndRead(B) = EndRead(B);Remove(A)
+
+  -- General diamond (capstone) --
+  101. general_object_diamond — HEADLINE: ALL object ops on different IDs commute
+
+  -- Status-object diamonds (segment lifecycle vs object operations) --
+  102. drain_read_diamond — BeginDrain;BeginRead = BeginRead;BeginDrain
+  103. drain_end_read_diamond — BeginDrain;EndRead = EndRead;BeginDrain
+  104. drain_evict_diamond — BeginDrain;Evict = Evict;BeginDrain
+  105. drain_remove_diamond — BeginDrain;Remove = Remove;BeginDrain
+
+  -- Read session transparency --
+  106. dec_refcnt_inc_refcnt — dec(inc(m)) = m (object-level cancellation)
+  107. read_session_transparent — HEADLINE: BeginRead;EndRead = identity (segment level)
+  108. read_session_store_transparent — HEADLINE: BeginRead;EndRead = identity (store level)
+
+  -- NoDup preservation (unique object IDs) --
+  109. nodup_filter_preserved — filtering preserves NoDup
+  110. nodup_map_id_preserved — id-preserving map preserves NoDup
+  111. nodup_remove_preserved — remove_object preserves NoDup
+  112. nodup_update_preserved — update_object_meta preserves NoDup
+  113. nodup_step_preserved — HEADLINE: every enriched step preserves NoDup
+
+  -- Trace equivalence (Mazurkiewicz trace monoid) --
+  114. rich_store_step_deterministic — single-step determinism of the enriched LTS
+  115. exec_deterministic — multi-step determinism: same trace → same result
+  116. exec_split — split execution at concatenation point
+  117. exec_join — join execution of concatenated lists
+  118. independent_sym — label independence is symmetric
+  119. independent_diamond — HEADLINE: unified diamond for all independent ops
+  120. swap_preserves_result — HEADLINE: adjacent swap of independent ops preserves final state
 
 KNOWN GAPS
 ==========
@@ -490,27 +569,125 @@ Source module -> Coq module -> What and why.
     KEY RESULTS: read_eviction_safety, begin_read_blocks_eviction,
     evict_is_guarded_remove, triple_protection, eviction_requires_all_absent
 
+  mooncake-store/src/master_service.cpp (BatchEvict, concurrent reads)
+    → LTS/ProtectionFrame.v
+    FIDELITY: specification
+    WHAT: Frame properties for concurrent multi-object operations.
+    Operations targeting one object (remove, inc_refcnt, dec_refcnt,
+    evict, read) do not affect another object's metadata or findability.
+    General frame theorem (non_targeting_preserves_find) plus headline
+    concurrent safety: evicting B doesn't affect A's refcount protection,
+    reading B doesn't interfere with A's protection, drain removals
+    respect active reads on other objects.
+    WHY: The single-object safety (EvictionSafety.v) proves protection
+    per object; the frame properties extend this to multi-object
+    concurrent scenarios.  This is the bridge between per-object
+    invariants and system-wide safety under arbitrary interleavings.
+    KEY RESULTS: non_targeting_preserves_find, concurrent_eviction_safe,
+    concurrent_reads_independent, drain_preserves_read_protection,
+    end_read_preserves_other_protection, trace_non_targeting_preserves_find,
+    trace_read_protection
+
+  mooncake-store/src/master_service.cpp (AddReplica, BatchEvict)
+    → LTS/ObjectLifecycle.v
+    FIDELITY: specification
+    WHAT: Constructive completeness proofs for object operations.
+    Placement makes objects findable, eviction makes them unfindable.
+    Protection dichotomy: every findable object is either protected
+    (eviction impossible) or unprotected (eviction possible), never
+    both.  BeginRead constructively changes protection status.
+    WHY: Complements the safety/frame properties (soundness) with
+    completeness: operations achieve their intended effects.  Together,
+    soundness + completeness characterize the protocol exactly.
+    KEY RESULTS: eviction_makes_unfindable, place_makes_findable,
+    read_or_evict, eviction_possible, read_possible,
+    begin_read_protects, evict_and_remove_same_effect
+
+  mooncake-store/src/master_service.cpp (concurrent operations)
+    → LTS/Diamond.v
+    FIDELITY: specification
+    WHAT: Diamond property for independent operations.  Operations
+    targeting different objects commute: executing l1 then l2 reaches
+    the same state as l2 then l1.  Reveals Mooncake's store has a
+    partially commutative monoid of operations — scheduling order does
+    not affect the final state for independent operations.
+    WHY: The frame properties (ProtectionFrame.v) show non-interference
+    at the level of predicates; the diamond property strengthens this
+    to full state equality.  This is the Church-Rosser property for
+    the concurrent object store.
+    KEY RESULTS: general_object_diamond (capstone),
+    concurrent_reads_diamond, evict_read_diamond,
+    remove_remove_diamond, evict_evict_diamond, remove_read_diamond,
+    end_read_end_read_diamond, begin_read_end_read_diamond,
+    evict_end_read_diamond, remove_end_read_diamond,
+    drain_read_diamond, drain_evict_diamond,
+    remove_update_seg_comm, update_update_seg_comm, remove_remove_seg_comm,
+    read_session_transparent, read_session_store_transparent
+
+  mooncake-store/src/master_service.cpp (object ID management)
+    → LTS/NoDupPreservation.v
+    FIDELITY: specification
+    WHAT: Proves that NoDup (unique object IDs) is preserved by every
+    operation in the enriched LTS.  Closes the gap where many theorems
+    assumed NoDup as a hypothesis without proving it was maintained.
+    WHY: NoDup is the structural invariant that makes object identity
+    well-defined.  Without it, find_object could return multiple matches
+    and update_object_meta could modify unintended objects.
+    KEY RESULTS: nodup_step_preserved (headline), nodup_filter_preserved,
+    nodup_map_id_preserved, nodup_remove_preserved, nodup_update_preserved
+
+  mooncake-store/src/master_service.cpp (concurrent operations)
+    → LTS/TraceEquivalence.v
+    FIDELITY: specification
+    WHAT: Mazurkiewicz trace monoid structure for the enriched LTS.
+    Defines multi-step execution (exec), label independence, and proves
+    the permutation theorem: swapping adjacent independent operations
+    in a trace preserves the final state.  Unifies all 40 individual
+    diamond theorems (16 object×object + 24 status×object) into a
+    single parametric independent_diamond, then lifts it to traces.
+    WHY: The diamond property (Diamond.v) proves commutativity for
+    individual operation pairs.  The permutation theorem shows this
+    structure extends to arbitrary traces — scheduling order is
+    irrelevant for independent operations.  This is the algebraic
+    capstone: the store is a partially commutative monoid.
+    KEY RESULTS: independent_diamond (unified diamond),
+    swap_preserves_result (permutation theorem), exec_deterministic,
+    exec_split, exec_join, independent_sym
+
 NEXT STEPS
 ==========
 
-  Items 1-3 from the original plan are DONE (StoreComposition,
-  ReplicaTransfer, DrainProtocol).  Remaining extensions:
+  DONE:
+  - StoreComposition, ReplicaTransfer, DrainProtocol (original plan items 1-3)
+  - StoreLTS, Acyclicity, StoreRefinement, DrainProgress (LTS plan items 1-4)
+  - Convergence (tight lifecycle bound, Tao-inspired)
+  - RefcountProtocol (refcount operations and protection proofs)
+  - EvictionSafety (enriched LTS with read/evict safety)
+  - ProtectionFrame (concurrent safety frame properties)
+  - ObjectLifecycle (constructive completeness and protection dichotomy)
+  - Diamond (commutativity of independent operations, Church-Rosser, read transparency)
+  - NoDupPreservation (unique object IDs preserved through all operations)
+  - TraceEquivalence (Mazurkiewicz trace monoid, permutation theorem)
 
-  1. EvictionSafety.v — Formalize the eviction precondition.
-     Theorem: eviction of a protected object requires explicit unpin
-     AND ref_count = 0 AND status = COMPLETE.
-     Theorem: eviction removes exactly one object and decreases used space.
-     Theorem: eviction on a draining segment does not create new replicas.
-     Source: eviction_strategy.h EvictKey, store.cpp eviction loop.
+  Remaining extensions:
 
-  2. CapacityCoherence.v — Prove segment capacity bookkeeping is coherent.
+  1. CapacityCoherence.v — Prove segment capacity bookkeeping is coherent.
      Theorem: place increases used by om_size, remove decreases by om_size.
      Theorem: if has_room checked before place, then used ≤ capacity after.
      Theorem: used = sum of om_size over all live objects on the segment.
      Source: allocator.h, store.cpp allocation path.
 
-  3. RefcountProtocol.v — Formalize reference counting as a protocol.
-     Theorem: inc_refcnt/dec_refcnt are paired (every inc has a matching dec).
-     Theorem: refcnt > 0 → eviction_protected.
-     Theorem: refcnt = 0 is a precondition for replica removal.
-     Source: replica.h inc_refcnt/dec_refcnt/is_busy.
+  2. Multi-segment model — extend from single-segment to multiple segments.
+     Currently all theorems operate on one segment with one transfer list.
+     Multi-segment would enable cross-segment migration safety.
+     Source: store.cpp segment_map, metadata service.
+
+  3. Transfer-segment coupling — prove that completing a transfer on a
+     draining segment preserves drain_consistent.  Requires adding
+     transfer labels to the enriched LTS.
+     Source: transfer_task.h callback + segment.h drain logic.
+
+  4. Drain-safety composition — prove that the entire drain lifecycle
+     (Convergence.v) can be executed without evicting any actively-read
+     objects.  Composes ProtectionFrame with Convergence.
+     Prerequisite: NoDup preservation through rich_store_step.

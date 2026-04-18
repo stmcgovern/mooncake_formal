@@ -14,3 +14,8 @@ theories/Store/RefcountProtocol.v
 theories/LTS/DrainProgress.v
 theories/LTS/Convergence.v
 theories/LTS/EvictionSafety.v
+theories/LTS/ProtectionFrame.v
+theories/LTS/ObjectLifecycle.v
+theories/LTS/Diamond.v
+theories/LTS/NoDupPreservation.v
+theories/LTS/TraceEquivalence.v
