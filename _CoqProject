@@ -19,3 +19,11 @@ theories/LTS/ObjectLifecycle.v
 theories/LTS/Diamond.v
 theories/LTS/NoDupPreservation.v
 theories/LTS/TraceEquivalence.v
+theories/LTS/RefcountCounting.v
+theories/LTS/Denotational.v
+theories/LTS/DrainSafety.v
+theories/LTS/RichConsistency.v
+theories/LTS/CapacityCoherence.v
+theories/LTS/GlobalSafety.v
+theories/LTS/PermutationInvariance.v
+theories/LTS/MultiSegment.v

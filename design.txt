@@ -314,6 +314,81 @@ HEADLINE THEOREMS
   119. independent_diamond — HEADLINE: unified diamond for all independent ops
   120. swap_preserves_result — HEADLINE: adjacent swap of independent ops preserves final state
 
+  -- Refcount conservation law (quantitative trace invariant) --
+  121. find_after_update_seg — segment-level lookup after update gives f(original)
+  122. begin_read_find — BeginRead makes find_object return inc_refcnt(m)
+  123. end_read_find — EndRead makes find_object return dec_refcnt(m)
+  124. refcount_counting — HEADLINE: refcount_final + #EndRead = refcount_initial + #BeginRead
+  125. protection_from_counting — HEADLINE: excess BeginReads over EndReads imply eviction protection
+
+  -- Denotational semantics and adequacy --
+  126. no_in_progress_reflect — decidable no_in_progress (boolean <-> Prop)
+  127. safe_to_unmount_reflect — decidable safe_to_unmount (boolean <-> Prop)
+  128. step_eval_sound — step_eval Some -> rich_store_step
+  129. step_eval_complete — rich_store_step -> step_eval Some
+  130. eval_sound — eval Some -> exec (multi-step soundness)
+  131. eval_complete — exec -> eval Some (multi-step completeness)
+  132. eval_adequacy — HEADLINE: eval ls st = Some st' <-> exec st ls st'
+  133. eval_app — HEADLINE: eval distributes over trace concatenation (monoid homomorphism)
+  134. eval_app_some — concatenation of successful evaluations succeeds
+  135. eval_app_none — failure in first half propagates through concatenation
+
+  -- Drain safety composition (lifecycle + frame + protection) --
+  136. exec_to_lstar — bridge exec -> lstar rich_store_step
+  137. lstar_to_exec — bridge lstar rich_store_step -> exec
+  138. remove_labels_non_targeting — removal trace doesn't target absent IDs
+  139. removal_trace_preserves_find — multi-step removal preserves non-targeted find
+  140. nodup_removal_trace — NoDup preserved through removal traces
+  141. drain_phase_safety — HEADLINE: BeginDrain + selective removal preserves readers
+  142. drain_phase_eval — HEADLINE: denotational drain preserves readers
+  143. full_drain_safety — HEADLINE: any non-targeting trace preserves readers
+  144. nodup_non_targeting_trace — NoDup preserved through non-Place traces
+  145. status_labels_non_targeting — status ops don't target any object
+
+  -- Enriched consistency (store_consistent through all 8 operations) --
+  146. meta_update_preserves_consistency — status-preserving metadata updates preserve store_consistent
+  147. rich_step_preserves_consistency — HEADLINE: every enriched step preserves store_consistent
+  148. rich_consistent_exec — HEADLINE: store_consistent through arbitrary enriched traces
+  149. eval_preserves_consistency — HEADLINE: eval preserves store_consistent
+
+  -- Capacity coherence (resource accounting invariant) --
+  150. sum_sizes_partition — CORE: total size = kept + freed (partition identity)
+  151. freed_eq_sum_matching — freed computation = sum of matching elements
+  152. place_preserves_coherence — Place preserves seg_used = sum_sizes
+  153. remove_preserves_coherence — Remove preserves seg_used = sum_sizes
+  154. update_preserves_coherence — metadata updates preserve coherence (when om_size preserved)
+  155. step_preserves_coherence — HEADLINE: every enriched step preserves capacity coherence
+  156. place_preserves_wf — has_room → place preserves used ≤ capacity
+  157. remove_preserves_wf — remove preserves wf when capacity coherent
+  158. step_preserves_well_formed — HEADLINE: combined invariant (consistent ∧ coherent ∧ NoDup) preserved
+  159. well_formed_exec — HEADLINE: well_formed preserved through non-Place traces
+
+  -- Permutation invariance (Cartier-Foata theorem for the store) --
+  170. object_op_det — object_op target is deterministic (same label → same oid)
+  171. pd_ao_NoDup — pairwise_different + all_object_ops implies NoDup on labels
+  172. non_targeting_preserves_find_backward — CORE: backward frame (post→pre find preservation)
+  173. object_op_swap_executable — executability transfer for independent object ops
+  174. permutation_invariance — HEADLINE: any permutation of independent ops gives same result
+
+  -- Multi-segment independence (cross-segment safety) --
+  175. cross_segment_frame — CORE: ops on segment i preserve segment j (i ≠ j)
+  176. global_step_preserves_wf — HEADLINE: global well-formedness is invariant
+  177. global_step_preserves_consistency — HEADLINE: global consistency is invariant
+  178. cross_segment_commute — HEADLINE: ops on different segments commute unconditionally
+  179. global_step_preserves_length — segment count preserved by all operations
+
+  -- Global safety capstone (definitive safety characterization) --
+  160. serving_safety — HEADLINE: read-in-progress objects survive arbitrary non-targeting traces
+  161. serving_path — HEADLINE: COMPLETE objects are constructively readable
+  162. reads_are_transparent — HEADLINE: balanced read sessions don't change state
+  163. balanced_read_preserves_wf — corollary: balanced reads preserve well-formedness
+  164. drain_respects_readers — HEADLINE: drain lifecycle preserves active readers
+  165. batch_eviction_safe — HEADLINE: batch eviction of unrelated objects preserves reads
+  166. invariant_preservation — HEADLINE: well_formed is invariant (combines consistency + coherence + NoDup)
+  167. consistency_always_preserved — HEADLINE: store_consistent invariant (no freshness needed)
+  168. protection_dichotomy — HEADLINE: every object is protected xor evictable
+  169. refcount_is_read_balance — HEADLINE: refcount = #BeginRead - #EndRead (conservation law)
+
 KNOWN GAPS
 ==========
 
@@ -654,6 +729,156 @@ Source module -> Coq module -> What and why.
     swap_preserves_result (permutation theorem), exec_deterministic,
     exec_split, exec_join, independent_sym
 
+  mooncake-store/include/replica.h (inc_refcnt, dec_refcnt)
+    → LTS/RefcountCounting.v
+    FIDELITY: specification
+    WHAT: Refcount conservation law across multi-step traces.  Defines
+    count_begins/count_ends (trace-level read event counting) and proves
+    the exact accounting identity: refcount_final + #EndRead =
+    refcount_initial + #BeginRead.  Corollary: excess BeginReads over
+    EndReads guarantee eviction protection.
+    WHY: The single-step read_eviction_safety (EvictionSafety.v) says
+    "refcount > 0 blocks eviction" but doesn't connect refcount to the
+    trace history.  This theorem makes the connection quantitative:
+    refcount is exactly the difference between begins and ends.
+    Protection becomes a consequence of arithmetic, not case analysis.
+    KEY RESULTS: refcount_counting (conservation law),
+    protection_from_counting (safety corollary), begin_read_find,
+    end_read_find, find_after_update_seg
+
+  mooncake-store/src/master_service.cpp (operation dispatch)
+    → LTS/Denotational.v
+    FIDELITY: specification
+    WHAT: Computable evaluation function for the enriched LTS.  Defines
+    step_eval (single-step, returns option StoreState) and eval (multi-step
+    fold).  Proves adequacy: eval ls st = Some st' ↔ exec st ls st'.
+    Proves compositionality: eval distributes over trace concatenation.
+    Includes boolean decision procedures for no_in_progress and
+    safe_to_unmount with reflection lemmas.
+    WHY: Bridges the operational (relational, good for proofs) and
+    denotational (functional, good for computation) views.  The adequacy
+    theorem licenses using eval for testing and extraction while keeping
+    exec for inductive proofs.  Compositionality reveals eval as a monoid
+    homomorphism from list concatenation to Kleisli composition.
+    KEY RESULTS: eval_adequacy (headline), eval_app (compositionality),
+    step_eval_sound, step_eval_complete, no_in_progress_reflect,
+    safe_to_unmount_reflect
+
+  mooncake-store/src/master_service.cpp (drain + concurrent reads)
+    → LTS/DrainSafety.v
+    FIDELITY: specification
+    WHAT: Composition of frame properties, eviction safety, NoDup
+    preservation, and denotational semantics.  Bridges exec and lstar
+    relations.  Proves that drain lifecycle respects active readers:
+    removing non-read objects preserves actively-read objects' metadata
+    and eviction protection.  Connects to eval for computability.
+    WHY: This is the capstone composition answering the key operational
+    question: "Can Mooncake drain a segment while reads are in progress?"
+    Yes — as long as only non-read objects are removed.  Composes
+    ProtectionFrame + EvictionSafety + NoDupPreservation + Denotational.
+    KEY RESULTS: drain_phase_safety (headline), drain_phase_eval
+    (denotational connection), full_drain_safety (general trace safety),
+    removal_trace_preserves_find, nodup_removal_trace,
+    exec_to_lstar, lstar_to_exec
+
+  mooncake-store/src/master_service.cpp (all operations)
+    → LTS/RichConsistency.v
+    FIDELITY: specification
+    WHAT: Extends store_consistent preservation from the 5-label store_step
+    to the full 8-label rich_store_step.  The key factoring insight:
+    meta_update_preserves_consistency — any metadata update that preserves
+    om_status also preserves store_consistent.  This covers both BeginRead
+    (inc_refcnt) and EndRead (dec_refcnt).  Evict reuses the Remove proof.
+    Multi-step and denotational corollaries follow.
+    WHY: The original store_step_preserves_consistency covers only 5
+    operations.  The enriched LTS adds BeginRead, EndRead, Evict — the
+    three operations critical to concurrent read safety.  This theorem
+    closes the gap: the global invariant holds through ALL operations.
+    KEY RESULTS: rich_step_preserves_consistency (headline),
+    rich_consistent_exec (multi-step), eval_preserves_consistency
+    (denotational), meta_update_preserves_consistency (factoring lemma)
+
+  mooncake-store/src/master_service.cpp (all operations)
+    → LTS/GlobalSafety.v
+    FIDELITY: specification
+    WHAT: Capstone safety theorems answering the four questions a system
+    designer cares about.  Q1: read-in-progress objects cannot be evicted
+    (serving_safety).  Q2: drain lifecycle respects active readers
+    (drain_respects_readers).  Q3: balanced reads don't change state
+    (reads_are_transparent).  Q4: global invariant maintained through
+    all operations (invariant_preservation).  Also: protection dichotomy,
+    batch eviction safety, refcount conservation law.
+    WHY: The definitive statement of what the formalization proves.
+    Individual theorems live in their respective modules; this file
+    restates them as the executive summary with unified documentation.
+    KEY RESULTS: serving_safety, serving_path, reads_are_transparent,
+    drain_respects_readers, batch_eviction_safe, invariant_preservation,
+    protection_dichotomy, refcount_is_read_balance
+
+  mooncake-store/src/master_service.cpp (concurrent operations)
+    → LTS/PermutationInvariance.v
+    FIDELITY: specification
+    WHAT: Full permutation invariance for independent operations — the
+    Cartier-Foata theorem for the Mooncake store.  Any permutation of
+    pairwise-independent object operations reaches the same final state.
+    Proves the backward frame (post→pre find preservation), executability
+    transfer (if l1;l2 works and they're independent, so does l2;l1),
+    and the main theorem by induction on Coq's Permutation derivation.
+    Includes NoDup derivation from pairwise_different + all_object_ops
+    (via object_op determinism).
+    WHY: The swap_preserves_result theorem (TraceEquivalence.v) only
+    handles adjacent transpositions.  This theorem extends to arbitrary
+    permutations: scheduling order is completely irrelevant for independent
+    operations.  This is the strongest commutativity result — it says not
+    just "the result is the same if both orderings work" but "if one
+    ordering works, ALL orderings work and give the same result."
+    KEY RESULTS: permutation_invariance (headline),
+    non_targeting_preserves_find_backward (backward frame),
+    object_op_swap_executable (executability transfer),
+    object_op_det (determinism), pd_ao_NoDup (NoDup from pairwise_different)
+
+  mooncake-store/src/store.cpp (segment_map, per-segment ops)
+    → LTS/MultiSegment.v
+    FIDELITY: specification
+    WHAT: Multi-segment model extending the formalization from single-segment
+    to a collection of independent segment stores.  Defines GlobalStore
+    (list of StoreState), GlobalLabel (segment index + operation), and
+    global_step (apply operation to specified segment).  Proves cross-segment
+    independence: operations on different segments don't affect each other.
+    Cross-segment commutativity: operations on different segments commute
+    unconditionally (stronger than label-level independence — structural
+    commutativity by construction).  Per-segment properties lift to global:
+    well-formedness and consistency are preserved by all global steps.
+    WHY: Mooncake is a DISTRIBUTED store — objects live on different
+    segments across different nodes.  The single-segment model captures
+    per-segment safety, but the real system manages many segments.  This
+    module proves that per-segment properties compose: the global store
+    is safe because each segment is independently safe and operations on
+    different segments don't interact.
+    KEY RESULTS: cross_segment_frame, cross_segment_commute,
+    global_step_preserves_wf, global_step_preserves_consistency,
+    global_step_preserves_length
+
+  mooncake-store/src/store.cpp (allocation path) + allocator.h
+    → LTS/CapacityCoherence.v
+    FIDELITY: specification
+    WHAT: Proves capacity bookkeeping invariant: seg_used faithfully
+    tracks the total size of objects on the segment.  Core arithmetic:
+    partition identity (total = kept + freed) for the remove operation.
+    Place preserves coherence (adds om_size to both fields).  Remove
+    preserves coherence (subtracts freed from both).  Metadata updates
+    (inc/dec_refcnt) preserve coherence because they preserve om_size.
+    Combined invariant: store_well_formed = consistent ∧ coherent ∧ NoDup,
+    preserved by every step (with fresh IDs for Place).
+    WHY: Resource correctness — the store must not lose track of space.
+    The capacity invariant ensures that used ≤ capacity is maintained
+    as long as has_room is checked before placement.  This is the
+    accounting layer beneath the safety properties.
+    KEY RESULTS: step_preserves_coherence (headline),
+    step_preserves_well_formed (combined invariant),
+    well_formed_exec (multi-step), sum_sizes_partition (core arithmetic),
+    place_preserves_wf, remove_preserves_wf
+
 NEXT STEPS
 ==========
 
@@ -668,26 +893,24 @@ NEXT STEPS
   - Diamond (commutativity of independent operations, Church-Rosser, read transparency)
   - NoDupPreservation (unique object IDs preserved through all operations)
   - TraceEquivalence (Mazurkiewicz trace monoid, permutation theorem)
+  - RefcountCounting (refcount conservation law, trace-level protection)
+  - Denotational (computable eval function, adequacy theorem, compositionality)
+  - DrainSafety (drain lifecycle respects active readers, exec↔lstar bridge)
+  - RichConsistency (store_consistent through all 8 enriched operations)
+  - CapacityCoherence (resource accounting invariant, combined well-formedness)
+  - GlobalSafety (capstone: definitive safety characterization)
+  - PermutationInvariance (Cartier-Foata theorem: any permutation of independent ops gives same state)
+  - MultiSegment (cross-segment independence: per-segment properties compose globally)
 
   Remaining extensions:
 
-  1. CapacityCoherence.v — Prove segment capacity bookkeeping is coherent.
-     Theorem: place increases used by om_size, remove decreases by om_size.
-     Theorem: if has_room checked before place, then used ≤ capacity after.
-     Theorem: used = sum of om_size over all live objects on the segment.
-     Source: allocator.h, store.cpp allocation path.
+  1. (DONE — see CapacityCoherence.v)
 
-  2. Multi-segment model — extend from single-segment to multiple segments.
-     Currently all theorems operate on one segment with one transfer list.
-     Multi-segment would enable cross-segment migration safety.
-     Source: store.cpp segment_map, metadata service.
+  2. (DONE — see MultiSegment.v: cross-segment frame, commutativity, invariant lifting)
 
   3. Transfer-segment coupling — prove that completing a transfer on a
      draining segment preserves drain_consistent.  Requires adding
      transfer labels to the enriched LTS.
      Source: transfer_task.h callback + segment.h drain logic.
 
-  4. Drain-safety composition — prove that the entire drain lifecycle
-     (Convergence.v) can be executed without evicting any actively-read
-     objects.  Composes ProtectionFrame with Convergence.
-     Prerequisite: NoDup preservation through rich_store_step.
+  4. (DONE — see DrainSafety.v: drain_phase_safety, full_drain_safety)
