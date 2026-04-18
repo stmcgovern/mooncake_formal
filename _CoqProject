@@ -27,3 +27,4 @@ theories/LTS/CapacityCoherence.v
 theories/LTS/GlobalSafety.v
 theories/LTS/PermutationInvariance.v
 theories/LTS/MultiSegment.v
+theories/LTS/AbstractCommutation.v

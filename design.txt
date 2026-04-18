@@ -377,6 +377,14 @@ HEADLINE THEOREMS
   178. cross_segment_commute — HEADLINE: ops on different segments commute unconditionally
   179. global_step_preserves_length — segment count preserved by all operations
 
+  -- Abstract permutation invariance (Cartier-Foata for any LTS) --
+  180. abstract_permutation_invariance — HEADLINE: any perm of pairwise-independent ops gives same result (2 axioms)
+  181. pairwise_indep_NoDup — irreflexivity + pairwise independence implies NoDup
+  182. pairwise_indep_perm — pairwise independence transfers through Permutation
+  183. mooncake_permutation — HEADLINE: Mooncake as one-line instance of the abstract theorem
+  184. exec_to_aexec — bridge: Mooncake exec → abstract aexec
+  185. aexec_to_exec — bridge: abstract aexec → Mooncake exec
+
   -- Global safety capstone (definitive safety characterization) --
   160. serving_safety — HEADLINE: read-in-progress objects survive arbitrary non-targeting traces
   161. serving_path — HEADLINE: COMPLETE objects are constructively readable
@@ -859,6 +867,27 @@ Source module -> Coq module -> What and why.
     global_step_preserves_wf, global_step_preserves_consistency,
     global_step_preserves_length
 
+  (abstract — no source correspondence)
+    → LTS/AbstractCommutation.v
+    FIDELITY: specification
+    WHAT: Abstract algebraic framework extracting the minimal axioms for
+    permutation invariance.  Given ANY labeled transition system with an
+    independence relation satisfying just TWO axioms — (I) irreflexivity:
+    no label is independent of itself, (II) swap: independent operations
+    can be executed in either order with the same result — full permutation
+    invariance holds for pairwise-independent traces.  Mooncake is proved
+    as a one-line instance.  Includes bridge lemmas between abstract aexec
+    and Mooncake's concrete exec.
+    WHY: Separates the mathematical structure from the domain.  The abstract
+    theorem reveals that permutation invariance is not about Mooncake — it's
+    about ANY concurrent system with independent operations.  The proof
+    factors into three steps: (1) irreflexivity + pairwise independence =>
+    NoDup, (2) NoDup transfers through Permutation, (3) induction on
+    Permutation using Swap.  Symmetry of independence is NOT needed.
+    KEY RESULTS: abstract_permutation_invariance (headline),
+    mooncake_permutation (instance), pairwise_indep_NoDup,
+    pairwise_indep_perm, exec_to_aexec, aexec_to_exec
+
   mooncake-store/src/store.cpp (allocation path) + allocator.h
     → LTS/CapacityCoherence.v
     FIDELITY: specification
@@ -901,6 +930,7 @@ NEXT STEPS
   - GlobalSafety (capstone: definitive safety characterization)
   - PermutationInvariance (Cartier-Foata theorem: any permutation of independent ops gives same state)
   - MultiSegment (cross-segment independence: per-segment properties compose globally)
+  - AbstractCommutation (abstract algebraic framework: 2 axioms → full permutation invariance)
 
   Remaining extensions:
 
