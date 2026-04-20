@@ -25,6 +25,6 @@ drift:
 # Build shared libraries before consumer files
 .PHONY: lib-distributed_ml_coq
 lib-distributed_ml_coq:
-	$(MAKE) -C lib/distributed_ml_coq -j$$(nproc)
+	$(MAKE) -C lib/distributed_ml_coq
 
 pre-all:: lib-distributed_ml_coq
