@@ -1,2 +1,11 @@
 source: data_source/Mooncake
 language: cpp
+ref: pin:c44a052944d1
+scope:
+  include:
+    - mooncake-store/include/**
+    - mooncake-store/src/**
+  exclude:
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/benchmarks/**"

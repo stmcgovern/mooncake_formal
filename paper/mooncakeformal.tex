@@ -1,0 +1,88 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Coq listing style
+\definecolor{coqbg}{HTML}{F5F5F0}
+\definecolor{coqkw}{HTML}{8B0000}
+\definecolor{coqcmt}{HTML}{228B22}
+\lstdefinestyle{coq}{
+  language=,
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{coqbg},
+  keywordstyle=\color{coqkw}\bfseries,
+  commentstyle=\color{coqcmt}\itshape,
+  morekeywords={Theorem,Lemma,Corollary,Definition,Fixpoint,Inductive,
+    Proof,Qed,forall,exists,fun,match,with,end,let,in},
+  frame=single,
+  xleftmargin=1.5em,
+  columns=flexible,
+  breaklines=true,
+}
+\newcommand{\coq}[1]{\lstinline[style=coq]{#1}}
+\newcommand{\Nat}{\mathbb{N}}
+
+\title{Mooncake KV cache disaggregated serving:\\
+       A Mechanized Formalization in Coq}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% What we prove, why it matters, what Coq gives us that testing doesn't.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+% What is the system? What correctness question do we answer?
+% Why formal verification? What class of bugs does it catch?
+
+\section{Background}
+\label{sec:background}
+
+% System architecture, key algorithms, prior work.
+
+\section{Formalization}
+\label{sec:formalization}
+
+% Coq model: types, key definitions, design decisions.
+% Use \coq{...} for inline Coq and lstlisting for blocks.
+
+\section{Main Results}
+\label{sec:results}
+
+% Headline theorems with informal statements and proof sketches.
+
+\section{Discussion}
+\label{sec:discussion}
+
+% What the proofs reveal. Surprises, limitations, future work.
+
+\section{Related Work}
+\label{sec:related}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

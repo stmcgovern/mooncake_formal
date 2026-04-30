@@ -1,6 +1,6 @@
 # Local Makefile additions (included by coq_makefile-generated Makefile)
 
-.PHONY: quality lint diagnose alignment drift
+.PHONY: quality lint fix baseline ci alignment drift
 
 # Full quality report (all analyses)
 quality:
@@ -10,9 +10,19 @@ quality:
 lint:
 	@rocq-lint
 
-# Gate check (CI)
-diagnose:
-	@rocq-diagnose gate style
+# Auto-fix (deprecated tactics, missing locality, unused imports)
+fix:
+	@rocq-lint --fix
+
+# Save ratchet baseline (commit .rocq-quality-baseline.json)
+baseline:
+	@rocq-lint --save-baseline
+
+# CI gate (exits nonzero on failures)
+ci:
+	@rocq-lint --summary
+	@rocq-diagnose gate --strict
+	@rocq-alignment --check-drift
 
 # Source alignment coverage report
 alignment:
