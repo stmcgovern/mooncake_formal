@@ -35,6 +35,7 @@
 Require Export MooncakeFormal.Core.Core.
 Require Export MooncakeFormal.Composition.StoreComposition.
 Require Export MooncakeFormal.Store.RefcountProtocol.
+Require Export MooncakeFormal.LTS.StoreLTS.
 Require Export MooncakeFormal.LTS.EvictionSafety.
 Require Export MooncakeFormal.LTS.TraceEquivalence.
 Require Export MooncakeFormal.LTS.RefcountCounting.
@@ -42,6 +43,13 @@ Require Export MooncakeFormal.LTS.ProtectionFrame.
 Require Export MooncakeFormal.LTS.CapacityCoherence.
 Require Export MooncakeFormal.LTS.NoDupPreservation.
 Require Export MooncakeFormal.LTS.GlobalSafety.
+Require Export DistributedML.Concurrency.InvLTS.
+
+(** Composable Interface *)
+
+Definition store_invlts : InvLTS :=
+  mk_InvLTS StoreState StoreLabel store_step store_consistent
+    store_step_preserves_consistency.
 
 (** Serving Safety *)
 
